@@ -1,0 +1,24 @@
+diff --git a/features_override.export.inc b/features_override.export.inc
+index c7dc404..2452a1c 100644
+--- a/features_override.export.inc
++++ b/features_override.export.inc
+@@ -446,6 +446,10 @@ function features_override_var_export($var, $prefix = '') {
+         $output = 'array()';
+       }
+       else {
++        $is_assoc = (array_keys($var) !== range(0, count($var) - 1));
++        if (!$is_assoc) {
++          sort($var);
++        }
+         $output = "array(\n";
+         foreach ($var as $key => $value) {
+           // Using normal var_export on the key to ensure correct quoting.
+@@ -454,7 +458,7 @@ function features_override_var_export($var, $prefix = '') {
+         $output .= ')';
+       }
+     }
+-    // Objects do not export cleanily.
++    // Objects do not export cleanly.
+     else {
+       if (method_exists($var, 'export')) {
+         $output = $var->export();

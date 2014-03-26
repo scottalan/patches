@@ -1,0 +1,119 @@
+diff --git a/panels.install b/panels.install
+index ab4d193..7668404 100644
+--- a/panels.install
++++ b/panels.install
+@@ -47,7 +47,20 @@ function panels_requirements_install() {
+ function panels_schema() {
+   // This should always point to our 'current' schema. This makes it relatively
+   // easy to keep a record of schema as we make changes to it.
+-  return panels_schema_6();
++  return panels_schema_7();
++}
++
++function panels_schema_7() {
++  $schema = panels_schema_6();
++
++  $schema['panels_pane']['fields']['pid'] = array(
++    'type' => 'char',
++    'length' => '40',
++    'not null' => TRUE,
++    'auto_increment' => FALSE,
++  );
++
++  return $schema;
+ }
+ 
+ function panels_schema_6() {
+@@ -487,3 +500,71 @@ function panels_update_7303() {
+     db_create_table($table_name, $schema[$table_name]);
+   }
+ }
++
++/**
++ * Updating the pid column to handle the new format of 'new-[UUID]'.
++ */
++function panels_update_7304() {
++
++  // Get display ids for displays and panes.
++  $display_dids = db_select('panels_display')
++    ->fields('panels_display', array('did'))
++    ->condition(db_or()
++        ->condition('uuid', '', '!=')
++        ->isNotNull('uuid')
++    )
++    ->execute()
++    ->fetchCol();
++
++  $pane_dids = db_select('panels_pane')
++    ->distinct()
++    ->fields('panels_pane', array('did'))
++    ->condition(db_or()
++        ->condition('uuid', '', '!=')
++        ->isNotNull('uuid')
++    )
++    ->execute()
++    ->fetchCol();
++
++  // We just need unique ids.
++  $dids = array_unique(array_merge($display_dids, $pane_dids));
++
++  $msg = array();
++
++  // Load the schema.
++  $schema = panels_schema_7();
++  $table = 'panels_pane';
++  $field = 'pid';
++  $spec = $schema[$table]['fields'][$field];
++
++  // Re-define the column type.
++  db_change_field($table, $field, $field, $spec);
++  $msg[] = t('Changed panels_pane.pid column type to CHAR.');
++
++  // Clear caches.
++  field_cache_clear(TRUE);
++
++  if ($displays = panels_load_displays($dids)) {
++    foreach ($displays as $display) {
++      if (!empty($display->content) && !empty($display->panels)) {
++        // A display save also triggers pane saves.
++        panels_save_display($display);
++      }
++      else {
++        // There could be duplicate panel displays that were created before
++        // this update that contain no content and no panels.
++        db_delete('panels_display')
++          ->condition('did', $display->did)
++          ->execute();
++
++        $msg[] = t('Deleted duplicate {panels_display} (@did) entry.', array('@did', $display->did));
++      }
++    }
++    $msg[] = t('Changed "pid" column to CHAR for database-based panel panes.');
++  }
++  else {
++    $msg[] = t('There were no displays that needed an update.');
++  }
++
++  return implode("\n", $msg);
++}
+diff --git a/panels.module b/panels.module
+index 4bb3bad..ff0580b 100644
+--- a/panels.module
++++ b/panels.module
+@@ -922,7 +922,15 @@ function panels_save_display(&$display) {
+         $pane->uuid = ctools_uuid_generate();
+       }
+ 
+-      drupal_write_record('panels_pane', $pane, is_numeric($pid) ? array('pid') : array());
++      // Updates pids that are numeric to new-UUID_PATTERN.
++      // @todo Remove this in the next stable release, as there will not be any pids that are numeric.
++      if (is_numeric($pid) || empty($pids)) {
++        $pane->pid = 'new-' . $pane->uuid;
++        drupal_write_record('panels_pane', $pane, array());
++      }
++      elseif (preg_match('/^new-' . UUID_PATTERN . '$/', $pid)) {
++        drupal_write_record('panels_pane', $pane, array('pid'));
++      }
+ 
+       // Allow other modules to take action after a pane is saved.
+       if ($pane->pid == $old_pid) {

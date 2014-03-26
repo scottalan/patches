@@ -1,0 +1,425 @@
+[1;33mdiff --git a/features_override.admin.inc b/features_override.admin.inc[m
+[1;33mindex f00b0d6..db34595 100644[m
+[1;33m--- a/features_override.admin.inc[m
+[1;33m+++ b/features_override.admin.inc[m
+[1;35m@@ -12,15 +12,23 @@[m [mfunction features_override_render_differences($component = '', $element = '', $m[m
+   module_load_include('inc', 'features_override', 'features_override.export');[m
+   module_load_include('inc', 'features', 'features.export');[m
+   drupal_add_css(drupal_get_path('module', 'features_override') . '/features_override.css');[m
+[1;32m+[m
+   if (empty($module)) {[m
+     $differences = features_override_get_overrides($component, $element, TRUE, !empty($component));[m
+   }[m
+   else {[m
+     // only grab the differences for the specific module we are interested in[m
+     $differences = array();[m
+[1;31m-    foreach ($module->info['features'] as $comp_name => $comp) {[m
+[1;31m-      if ($difference = array_filter(features_override_module_component_overrides($module->name, $comp_name, FALSE, TRUE))) {[m
+[1;31m-        $differences[$comp_name] = isset($differences[$comp_name]) ? array_merge($difference, $differences[$comp_name]) : $difference;[m
+[1;32m+[m[1;32m    if (!empty($component)) {[m
+[1;32m+[m[1;32m      if ($difference = array_filter(features_override_module_component_overrides($module->name, $component, FALSE, TRUE))) { // I had last arg set to false[m
+[1;32m+[m[1;32m        $differences[$component] = isset($differences[$component]) ? array_merge($difference, $differences[$component]) : $difference;[m
+[1;32m+[m[1;32m      }[m
+[1;32m+[m[1;32m    }[m
+[1;32m+[m[1;32m    else {[m
+[1;32m+[m[1;32m      foreach ($module->info['features'] as $comp_name => $comp) {[m
+[1;32m+[m[1;32m        if ($difference = array_filter(features_override_module_component_overrides($module->name, $comp_name, FALSE, TRUE))) { // I had last arg set to false[m
+[1;32m+[m[1;32m          $differences[$comp_name] = isset($differences[$comp_name]) ? array_merge($difference, $differences[$comp_name]) : $difference;[m
+[1;32m+[m[1;32m        }[m
+       }[m
+     }[m
+   }[m
+[1;35m@@ -43,7 +51,7 @@[m [mfunction features_override_render_differences($component = '', $element = '', $m[m
+       if (!empty($key)) {[m
+         if (!empty($difference['additions'][$key])) {[m
+           return '<pre>' . check_plain(implode("\n", [m
+[1;31m-            features_override_features_export_render_addition($difference['additions'][$key], $element_name, $component_name))) . [m
+[1;32m+[m[1;32m            features_override_features_export_render_addition($difference['additions'][$key], $element_name, $component_name))) .[m
+             '</pre>';[m
+         }[m
+         elseif (!empty($difference['deletions'][$key])) {[m
+[1;35m@@ -58,7 +66,7 @@[m [mfunction features_override_render_differences($component = '', $element = '', $m[m
+       else {[m
+         if (!empty($difference['additions'])) {[m
+           foreach ($difference['additions'] as $alter) {[m
+[1;31m-            if (is_scalar($alter['value'])) {[m
+[1;32m+[m[1;32m            if (is_scalar($alter['value'])) { //scott && strpos($alter['value'], 'new-') > 0[m
+               $code_change[] = array('<pre>' . check_plain(implode("\n", features_override_features_export_render_addition($alter, $element_name, $component_name))). '</pre>');[m
+             }[m
+             else {[m
+[1;35m@@ -115,7 +123,7 @@[m [mfunction features_override_feature_diff($feature, $component = NULL) {[m
+       );[m
+   }[m
+   $output['overrides'] = array([m
+[1;31m-    '#markup' => features_override_render_differences('', '', $feature),[m
+[1;32m+[m[1;32m    '#markup' => features_override_render_differences($component, '', $feature),[m
+     '#weight' => -99,[m
+     );[m
+   return $output;[m
+[1;33mdiff --git a/features_override.export.inc b/features_override.export.inc[m
+[1;33mindex c7dc404..3d16ca1 100644[m
+[1;33m--- a/features_override.export.inc[m
+[1;33m+++ b/features_override.export.inc[m
+[1;35m@@ -16,7 +16,7 @@[m
+  *   An array of component, element, and keys string[m
+  * @see features_override_make_key()[m
+  */[m
+[1;31m-function features_override_parse_identifier($identifier) {[m
+[1;32m+[m[1;32mfunction features_override_parse_identifier($identifier, $base = FALSE) {[m
+   $first_period = strpos($identifier, '.');[m
+   $component = substr($identifier, 0, $first_period);[m
+   if ($second_period = strpos($identifier, '.', $first_period + 1)) {[m
+[1;35m@@ -190,7 +190,7 @@[m [mfunction features_override_module_component_overrides($module, $component, $rese[m
+       );[m
+       if (isset($default_copy[$name])) {[m
+         drupal_alter('features_override_component_overrides', $default_copy[$name], $normal_copy[$name], $context);[m
+[1;31m-        _features_override_set_additions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['additions'], $ignore_keys);[m
+[1;32m+[m[1;32m        _features_override_set_additions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['additions'], $context, $ignore_keys);[m
+         _features_override_set_deletions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['deletions'], $ignore_keys);[m
+       }[m
+       if (!array_filter($component_overrides[$name])) {[m
+[1;35m@@ -250,7 +250,7 @@[m [mfunction _features_override_sanitize(&$array) {[m
+  * @param $keys[m
+  *   The keys for this level.[m
+  */[m
+[1;31m-function _features_override_set_additions(&$default, &$normal, &$additions, $ignore_keys = array(), $level = 0, $keys = array()) {[m
+[1;32m+[m[1;32mfunction _features_override_set_additions(&$default, &$normal, &$additions, $context, $ignore_keys = array(), $level = 0, $keys = array()) {[m
+   if (is_object($normal) || is_array($normal)) {[m
+     foreach ($normal as $key => $value) {[m
+       if (isset($ignore_keys[$key]) && ($level == $ignore_keys[$key])) {[m
+[1;35m@@ -267,21 +267,40 @@[m [mfunction _features_override_set_additions(&$default, &$normal, &$additions, $ign[m
+           );[m
+         }[m
+         elseif (property_exists($default, $key) && ($default->$key !== $value)) {[m
+[1;31m-          _features_override_set_additions($default->$key, $value, $additions, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'object', 'key' => $key))));[m
+[1;32m+[m[1;32m          _features_override_set_additions($default->$key, $value, $additions, $context, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'object', 'key' => $key))));[m
+         }[m
+       }[m
+       elseif (is_array($normal)) {[m
+         if (!is_array($default) || !array_key_exists($key, $default) ||[m
+            (is_scalar($value) && (features_var_export($default[$key]) !== features_var_export($value)))) {[m
+           $_keys = array_merge($keys, array(array('type' => 'array', 'key' => $key)));[m
+[1;31m-          $additions[features_override_make_key($_keys)] = array([m
+[1;31m-            'keys' => $_keys,[m
+[1;31m-            'value' => $value,[m
+[1;31m-            'original' => (is_scalar($value) && isset($default[$key])) ? $default[$key] : '',[m
+[1;31m-          );[m
+[1;32m+[m[1;32m          //scott[m
+[1;32m+[m[1;32m          // Special care for panelizer_defaults.[m
+[1;32m+[m[1;32m          if ($level == 2 && $_keys[0]['key'] == 'display' && $_keys[1]['key'] == 'panels' && isset($_keys[2])) {[m
+[1;32m+[m[1;32m            if ($_keys[2]['key'] == $key) {[m
+[1;32m+[m[1;32m              foreach ($value as $position => $pid) {[m
+[1;32m+[m[1;32m                $_keys['pid'] = array('type' => 'pid', 'key' => $pid);[m
+[1;32m+[m[1;32m                $additions[features_override_make_key($_keys)] = array([m
+[1;32m+[m[1;32m                  'keys' => $_keys,[m
+[1;32m+[m[1;32m                  'value' => (string) $position,[m
+[1;32m+[m[1;32m                  'pid' => $pid,[m
+[1;32m+[m[1;32m                  'position' => $position,[m
+[1;32m+[m[1;32m                  'original' => (is_scalar($position) && isset($default->$key)) ? $default->$key : '',[m
+[1;32m+[m[1;32m                );[m
+[1;32m+[m[1;32m              }[m
+[1;32m+[m[1;32m            }[m
+[1;32m+[m[1;32m          }[m
+[1;32m+[m[1;32m          //end[m
+[1;32m+[m[1;32m          else {[m
+[1;32m+[m[1;32m            $additions[features_override_make_key($_keys)] = array([m
+[1;32m+[m[1;32m              'keys' => $_keys,[m
+[1;32m+[m[1;32m              'value' => $value,[m
+[1;32m+[m[1;32m              'original' => (is_scalar($value) && isset($default[$key])) ? $default[$key] : '',[m
+[1;32m+[m[1;32m            );[m
+[1;32m+[m[1;32m          }[m
+         }[m
+         elseif (array_key_exists($key, $default) && (!is_null($value) && ($default[$key] !== $value))) {[m
+[1;31m-          _features_override_set_additions($default[$key], $value, $additions, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'array', 'key' => $key))));[m
+[1;32m+[m[1;32m          _features_override_set_additions($default[$key], $value, $additions, $context, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'array', 'key' => $key))));[m
+         }[m
+       }[m
+     }[m
+[1;35m@@ -454,7 +473,7 @@[m [mfunction features_override_var_export($var, $prefix = '') {[m
+         $output .= ')';[m
+       }[m
+     }[m
+[1;31m-    // Objects do not export cleanily.[m
+[1;32m+[m[1;32m    // Objects do not export cleanly.[m
+     else {[m
+       if (method_exists($var, 'export')) {[m
+         $output = $var->export();[m
+[1;35m@@ -472,6 +491,9 @@[m [mfunction features_override_var_export($var, $prefix = '') {[m
+       }[m
+     }[m
+   }[m
+[1;32m+[m[1;32m  elseif ($var === '0') {[m
+[1;32m+[m[1;32m    $output = var_export($var, TRUE);[m
+[1;32m+[m[1;32m  }[m
+   else {[m
+     module_load_include('inc', 'features', 'features.export');[m
+     $output = features_var_export($var);[m
+[1;35m@@ -490,20 +512,20 @@[m [mfunction features_override_var_export($var, $prefix = '') {[m
+ function features_override_features_export_render_addition($alter, $element, $component, $is_change = TRUE) {[m
+   module_load_include('inc', 'features_override', 'features_override.hooks');[m
+   if (features_hook($component, 'features_override_export_render_addition')) {[m
+[1;31m-    return features_invoke($component, 'features_override_export_render_addition', $alter, $element);[m
+[1;32m+[m[1;32m    return features_invoke($component, 'features_override_export_render_addition', $alter, $element, $is_change);[m
+   }[m
+   else {[m
+[1;31m-    $code = array();[m
+[1;32m+[m[1;32m    $code = array();//data[m
+     $component_start = "\$data['$element']";[m
+     $code_line = features_override_export_keys($alter['keys']);[m
+[1;31m-    $value_export = features_override_var_export($alter['value'], '    ');[m
+[1;32m+[m[1;32m    $value_export = features_override_var_export($alter['value'], '  ');[m
+     if ($is_change) {[m
+[1;31m-      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '    ') . ' */' : '';[m
+[1;32m+[m[1;32m      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '  ') . ' */' : '';[m
+     }[m
+     else {[m
+       $original_export = '';[m
+     }[m
+[1;31m-    $code[] = "    " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;[m
+[1;32m+[m[1;32m    $code[] = "  " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;[m
+     return $code;[m
+   }[m
+ }[m
+[1;33mdiff --git a/features_override.features.inc b/features_override.features.inc[m
+[1;33mindex cea1445..50d51db 100644[m
+[1;33m--- a/features_override.features.inc[m
+[1;33m+++ b/features_override.features.inc[m
+[1;35m@@ -37,13 +37,15 @@[m [mfunction features_overrides_features_export_options() {[m
+       $main_links[features_override_encode_string($identifier)] = url('admin/structure/features/features_override/' . $component . '/' . $key);[m
+       if (!empty($element['additions'])) {[m
+         foreach ($element['additions'] as $change_key => $changes) {[m
+[1;31m-          $options[$identifier . '.' . $change_key] = $identifier_spaced . ' addition: of ' . features_override_export_keys($changes['keys']);[m
+[1;32m+[m[1;32m          $change_value = (isset($changes['value']) && is_scalar($changes['value'])) ? " -- ('" . $changes['value'] . "')" : NULL;[m
+[1;32m+[m[1;32m          $options[$identifier . '.' . $change_key] = $identifier_spaced . ' addition: of ' . features_override_export_keys($changes['keys']) . $change_value;[m
+           $sub_links[features_override_encode_string($identifier . '.' . $change_key)] = url('admin/structure/features/features_override/' . $component . '/' . $key, array('query' => array('key' => $change_key)));[m
+         }[m
+       }[m
+       if (!empty($element['deletions'])) {[m
+         foreach ($element['deletions'] as $change_key => $changes) {[m
+[1;31m-          $options[$identifier . '.' . $change_key] = $identifier_spaced . ' deletion of ' . features_override_export_keys($changes['keys']);[m
+[1;32m+[m[1;32m          $change_value = (isset($changes['value']) && is_string($changes['value'])) ? ' (' . $changes['value'] . ')' : NULL;[m
+[1;32m+[m[1;32m          $options[$identifier . '.' . $change_key] = $identifier_spaced . ' deletion of ' . features_override_export_keys($changes['keys']) . $change_value;[m
+           $sub_links[features_override_encode_string($identifier . '.' . $change_key)] = url('admin/structure/features/features_override/' . $component . '/' . $key, array('query' => array('key' => $change_key)));[m
+         }[m
+       }[m
+[1;35m@@ -84,12 +86,12 @@[m [mfunction features_override_items_features_export($data, &$export, $module_name =[m
+       // Add in all current overrides to import.[m
+       foreach ($options as $option_key => $option_name) {[m
+         list($options_component, $options_element, $options_keys) = features_override_parse_identifier($option_key);[m
+[1;31m-        if ($options_element == $element && empty($map_overrides[$option_key])) {[m
+[1;32m+[m[1;32m        if ($options_element == $element && (empty($map_overrides[$option_key]))) {[m
+           $pipe['features_overrides'][] = $option_key;[m
+         }[m
+       }[m
+ [m
+[1;31m-      // Add in depedency to module that defines this item.[m
+[1;32m+[m[1;32m      // Add in dependency to module that defines this item.[m
+       $component_map = features_get_default_map($component);[m
+       if (!empty($component_map[$element])) {[m
+         $export['dependencies'][$component_map[$element]] = $component_map[$element];[m
+[1;35m@@ -106,7 +108,6 @@[m [mfunction features_override_items_features_export($data, &$export, $module_name =[m
+ function features_overrides_features_export($data, &$export, $module_name = '') {[m
+   $pipe = array('features_overrides' => array());[m
+   $map = features_get_default_map('features_overrides');[m
+[1;31m-  static $options;[m
+ [m
+   foreach ($data as $identifier) {[m
+     // If this override bundle is already provided by another module, remove the field[m
+[1;35m@@ -167,38 +168,63 @@[m [mfunction features_overrides_features_export_render($module, $data, $export = NUL[m
+     '  // This code is only used for UI in features. Exported alters hooks do the magic.',[m
+     '  $overrides = array();',[m
+   );[m
+[1;32m+[m
+   $last_component = '';[m
+[1;32m+[m[1;32m  $last_element = '';[m
+[1;32m+[m[1;32m  $last_keys = '';[m
+[1;32m+[m[1;32m  $exports = array();[m
+[1;32m+[m[1;32m  $export_keys = array();[m
+[1;32m+[m
+   foreach ($data as $identifier) {[m
+[1;31m-    // Something is adding extra quote marks.[m
+     list($component, $element, $keys) = features_override_parse_identifier($identifier);[m
+[1;31m-    $component_code[$component] = isset($component_code[$component]) ? $component_code[$component] : array();[m
+[1;31m-    $overrides_to_export[$component] = isset($overrides_to_export[$component]) ? $overrides_to_export[$component] : array();[m
+[1;31m-    $overrides = features_override_get_overrides($component);[m
+[1;31m-    $features_override_value = array([m
+[1;31m-      'additions' => array(),[m
+[1;31m-      'deletions' => array()[m
+[1;31m-    );[m
+[1;31m-    // Just specific keys are being exported so add them if set.[m
+[1;31m-    if (!empty($overrides[$element])) {[m
+[1;31m-      if (isset($overrides[$element]['additions'][$keys])) {[m
+[1;31m-        $overrides_to_export[$component][$element]['additions'][] = $overrides[$element]['additions'][$keys];[m
+[1;31m-        $features_override_value['additions'][] = $overrides[$element]['additions'][$keys];[m
+[1;31m-      }[m
+[1;31m-      elseif (isset($overrides[$element]['deletions'][$keys])) {[m
+[1;31m-        $overrides_to_export[$component][$element]['deletions'][] = $overrides[$element]['deletions'][$keys];[m
+[1;31m-        $features_override_value['deletions'][] = $overrides[$element]['deletions'][$keys];[m
+[1;31m-      }[m
+[1;32m+[m[1;32m    if ($component != $last_component || $element != $last_element) {[m
+[1;32m+[m[1;32m      $exports[$component] = $element;[m
+     }[m
+[1;31m-    if ($component != $last_component) {[m
+[1;31m-      $features_override_code[] = '';[m
+[1;31m-      $features_override_code[] = "  // Exported overrides for: $component";[m
+[1;32m+[m[1;32m    if ($keys != $last_keys) {[m
+[1;32m+[m[1;32m      $export_keys[] = $keys;[m
+     }[m
+     $last_component = $component;[m
+[1;31m-    if (count($features_override_value['additions'])) {[m
+[1;31m-      $features_override_code[] = '  $overrides["' . $identifier . '"] = ' . features_override_var_export($features_override_value['additions'][0]['value'], '  ') . ';';[m
+[1;32m+[m[1;32m    $last_element = $element;[m
+[1;32m+[m[1;32m    $last_keys = $keys;[m
+[1;32m+[m[1;32m  }[m
+[1;32m+[m[1;32m  foreach ($exports as $component => $element) {[m
+[1;32m+[m[1;32m    $overrides[$component][$element] = features_override_get_overrides($component, $element);[m
+[1;32m+[m[1;32m  }[m
+[1;32m+[m
+[1;32m+[m[1;32m  foreach ($overrides as $component => $changes) {[m
+[1;32m+[m[1;32m    foreach ($changes as $element => $override) {[m
+[1;32m+[m[1;32m      if (!empty($override['additions'])) {[m
+[1;32m+[m[1;32m        foreach ($override['additions'] as $k => $v) {[m
+[1;32m+[m[1;32m          if (in_array($k, $export_keys)) {[m
+[1;32m+[m[1;32m            $overrides_to_export[$component][$element]['additions']["{$component}.{$element}.{$k}"] = $override['additions'][$k];[m
+[1;32m+[m[1;32m            $features_override_value['additions']["{$component}.{$element}.{$k}"] = $override['additions'][$k];[m
+[1;32m+[m[1;32m          }[m
+[1;32m+[m[1;32m        }[m
+[1;32m+[m[1;32m      }[m
+[1;32m+[m[1;32m      if (!empty($override['deletions'])) {[m
+[1;32m+[m[1;32m        foreach ($override['deletions'] as $k => $v) {[m
+[1;32m+[m[1;32m          if (in_array($k, $export_keys)) {[m
+[1;32m+[m[1;32m            $overrides_to_export[$component][$element]['deletions']["{$component}.{$element}.{$k}"] = $override['deletions'][$k];[m
+[1;32m+[m[1;32m            $features_override_value['deletions']["{$component}.{$element}.{$k}"] = $override['deletions'][$k];[m
+[1;32m+[m[1;32m          }[m
+[1;32m+[m[1;32m        }[m
+[1;32m+[m[1;32m      }[m
+[1;32m+[m[1;32m    }[m
+[1;32m+[m[1;32m  }[m
+[1;32m+[m
+[1;32m+[m[1;32m  foreach ($exports as $component => $element) {[m
+[1;32m+[m[1;32m    $features_override_code[] = '';[m
+[1;32m+[m[1;32m    $features_override_code[] = "  // Exported overrides for: $component";[m
+[1;32m+[m
+[1;32m+[m[1;32m    if (!empty($features_override_value['additions'])) {[m
+[1;32m+[m[1;32m      foreach ($features_override_value['additions'] as $identifier => $info) {[m
+[1;32m+[m[1;32m        $features_override_code[] = '  $overrides["' . $identifier . '"] = ' . features_override_var_export($info['value'], '  ') . ';';[m
+[1;32m+[m[1;32m      }[m
+     }[m
+[1;31m-    else if (count($features_override_value['deletions'])) {[m
+[1;31m-      $features_override_code[] = '  $overrides["' . $identifier . '"]["DELETED"] = TRUE;';[m
+[1;32m+[m[1;32m    if (!empty ($features_override_value['deletions'])) {[m
+[1;32m+[m[1;32m      foreach ($features_override_value['deletions'] as $identifier => $info) {[m
+[1;32m+[m[1;32m        $features_override_code[] = '  $overrides["' . $identifier . '"]["DELETED"] = TRUE;';[m
+[1;32m+[m[1;32m      }[m
+     }[m
+   }[m
+ [m
+[1;35m@@ -209,16 +235,18 @@[m [mfunction features_overrides_features_export_render($module, $data, $export = NUL[m
+ [m
+   $component_code = array();[m
+   foreach ($overrides_to_export as $component => $elements) {[m
+[1;31m-    foreach ($elements as $element => $overrides) {[m
+[1;32m+[m[1;32m    foreach ($elements as $element => $element_overrides) {[m
+       $component_code[$component] = isset($component_code[$component]) ? $component_code[$component] : array();[m
+       $component_code[$component][] = '  if (isset($data[' . var_export($element,TRUE) . '])) {';[m
+[1;31m-      if (!empty($overrides['additions'])) {[m
+[1;31m-        foreach ($overrides['additions'] as $alter) {[m
+[1;32m+[m[1;32m      if (!empty($element_overrides['additions'])) {[m
+[1;32m+[m[1;32m        //ksort($element_overrides['additions']);[m
+[1;32m+[m[1;32m        foreach ($element_overrides['additions'] as $alter) {[m
+           $component_code[$component][] = implode("\n", features_override_features_export_render_addition($alter, $element, $component));[m
+         }[m
+       }[m
+[1;31m-      if (!empty($overrides['deletions'])) {[m
+[1;31m-        foreach ($overrides['deletions'] as $alter) {[m
+[1;32m+[m[1;32m      if (!empty($element_overrides['deletions'])) {[m
+[1;32m+[m[1;32m        //ksort($element_overrides['deletions']);[m
+[1;32m+[m[1;32m        foreach ($element_overrides['deletions'] as $alter) {[m
+           $component_code[$component][] = implode("\n", features_override_features_export_render_deletion($alter, $element, $component));[m
+         }[m
+       }[m
+[1;35m@@ -226,7 +254,6 @@[m [mfunction features_overrides_features_export_render($module, $data, $export = NUL[m
+     }[m
+   }[m
+ [m
+[1;31m-  $info = features_get_components();[m
+   foreach ($component_code as $component => $code) {[m
+     $list[features_get_default_alter_hook($component) . '_alter'] = array([m
+       'code' => implode("\n", $code),[m
+[1;35m@@ -276,7 +303,7 @@[m [mfunction _features_override_features_rebuild($module, $component_key = 'features[m
+   $parents = array();[m
+   $data = features_get_component_map();[m
+   foreach ($data[$component_key] as $identifier => $component_modules) {[m
+[1;31m-    list($component, $element) = features_override_parse_identifier($identifier);[m
+[1;32m+[m[1;32m    list($component, $element, $keys, $position) = features_override_parse_identifier($identifier);[m
+     if (isset($data[$component][$element])) {[m
+       foreach ($data[$component][$element] as $module_name) {[m
+         $parents[$module][$component] = $module_name;[m
+[1;33mdiff --git a/features_override.hooks.inc b/features_override.hooks.inc[m
+[1;33mindex a9402f9..d12ca7c 100644[m
+[1;33m--- a/features_override.hooks.inc[m
+[1;33m+++ b/features_override.hooks.inc[m
+[1;35m@@ -8,12 +8,62 @@[m
+ /**[m
+  * Implements hook_features_override_component_overrides_alter().[m
+  */[m
+[1;31m-function image_features_override_component_overrides_alter(&$default, &$normal, $context) {[m
+[1;32m+[m[1;32mfunction features_override_features_override_component_overrides_alter(&$default, &$normal, $context) {[m
+   if ($context['component'] == 'image') {[m
+     // Effects have their keys changed on override. This resets them to numeric.[m
+     $normal['effects'] = array_values($normal['effects']);[m
+     $default['effects'] = array_values($default['effects']);[m
+   }[m
+[1;32m+[m[1;32m  //scott[m
+[1;32m+[m[1;32m  // We need to reorder the panels because features orders them using 'sort'.[m
+[1;32m+[m[1;32m  // In doing so, it screws up the order in which the panels are displayed in the[m
+[1;32m+[m[1;32m  // UI.[m
+[1;32m+[m[1;32m//  if ($context['component'] == 'panelizer_defaults') {[m
+[1;32m+[m[1;32m//    $new = array();[m
+[1;32m+[m[1;32m//    $map = array_unique(features_get_default_map('features_overrides'));[m
+[1;32m+[m[1;32m//    foreach ($map as $module) {[m
+[1;32m+[m[1;32m//      module_load_include('inc', $module, "$module.features.features_overrides");[m
+[1;32m+[m[1;32m//      $overrides[$module] = call_user_func($module . '_features_override_default_overrides');[m
+[1;32m+[m[1;32m//    }[m
+[1;32m+[m[1;32m//    if (in_array($context['module'], $map)) { //panopoly_users not in array[m
+[1;32m+[m[1;32m//      if (isset($normal->display) && !empty($normal->display->content)) {[m
+[1;32m+[m[1;32m//        foreach ($normal->display->content as $pane_id => $info) {[m
+[1;32m+[m[1;32m//          foreach ($normal->display->panels as $region => $panes) {[m
+[1;32m+[m[1;32m//            if (in_array($pane_id, $panes)) {[m
+[1;32m+[m[1;32m//              $new[$region][$info->position] = $info->pid;[m
+[1;32m+[m[1;32m//            }[m
+[1;32m+[m[1;32m//          }[m
+[1;32m+[m[1;32m//        }[m
+[1;32m+[m[1;32m//        foreach ($new as $region => $panes) {[m
+[1;32m+[m[1;32m//          $normal->display->panels[$region] = $new[$region];[m
+[1;32m+[m[1;32m//        }[m
+[1;32m+[m[1;32m//      }[m
+[1;32m+[m[1;32m//    }[m
+[1;32m+[m[1;32m//  }[m
+[1;32m+[m[1;32m  //end[m
+[1;32m+[m[1;32m}[m
+[1;32m+[m
+[1;32m+[m[1;32mfunction panelizer_defaults_features_override_export_render_addition($alter, $element, $is_change) {[m
+[1;32m+[m[1;32m  // Change the way panelizer_defaults exports are rendered.[m
+[1;32m+[m[1;32m  $code = array();[m
+[1;32m+[m[1;32m  $component_start = "\$data['$element']";[m
+[1;32m+[m[1;32m  if (isset($alter['position'])) {[m
+[1;32m+[m[1;32m    unset($alter['keys']['pid']);[m
+[1;32m+[m[1;32m    $code_line = features_override_export_keys($alter['keys']);[m
+[1;32m+[m[1;32m    $code[] = "  " . $component_start . $code_line . "['{$alter['value']}'] = '{$alter['pid']}';"; //$alter['value']?[m
+[1;32m+[m[1;32m  }[m
+[1;32m+[m[1;32m  else {[m
+[1;32m+[m[1;32m    $code_line = features_override_export_keys($alter['keys']);[m
+[1;32m+[m[1;32m    $value_export = features_override_var_export($alter['value'], '  ');[m
+[1;32m+[m[1;32m    if ($is_change) {[m
+[1;32m+[m[1;32m      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '  ') . ' */' : '';[m
+[1;32m+[m[1;32m    }[m
+[1;32m+[m[1;32m    else {[m
+[1;32m+[m[1;32m      $original_export = '';[m
+[1;32m+[m[1;32m    }[m
+[1;32m+[m[1;32m    $code[] = "  " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;[m
+[1;32m+[m[1;32m  }[m
+[1;32m+[m[1;32m  return $code;[m
+ }[m
+ [m
+ /**[m

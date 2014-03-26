@@ -1,0 +1,67 @@
+diff --git a/features_override.hooks.inc b/features_override.hooks.inc
+index a9402f9..e177683 100644
+--- a/features_override.hooks.inc
++++ b/features_override.hooks.inc
+@@ -8,12 +8,61 @@
+ /**
+  * Implements hook_features_override_component_overrides_alter().
+  */
+-function image_features_override_component_overrides_alter(&$default, &$normal, $context) {
++function features_override_features_override_component_overrides_alter(&$default, &$normal, $context) {
+   if ($context['component'] == 'image') {
+     // Effects have their keys changed on override. This resets them to numeric.
+     $normal['effects'] = array_values($normal['effects']);
+     $default['effects'] = array_values($default['effects']);
+   }
++  //scott
++  // We need to reorder the panels because features orders them using 'sort'.
++  // In doing so, it screws up the order in which the panels are displayed in the
++  // UI.
++  if ($context['component'] == 'panelizer_defaults') {
++    $new = array();
++    $map = array_unique(features_get_default_map('features_overrides'));
++    foreach ($map as $module) {
++      module_load_include('inc', $module, "$module.features.features_overrides");
++      $overrides[$module] = call_user_func($module . '_features_override_default_overrides');
++    }
++    if (isset($normal->display) && !empty($normal->display->content)) {
++      foreach ($normal->display->content as $pane_id => $info) {
++        foreach ($normal->display->panels as $region => $panes) {
++          if (in_array($pane_id, $panes)) {
++            $new[$region][$info->position] = $info->pid;
++          }
++        }
++      }
++      foreach ($new as $region => $panes) {
++        ksort($new[$region]);
++        $normal->display->panels[$region] = $new[$region];
++      }
++    }
++  }
++  //end
++}
++
++function panelizer_defaults_features_override_export_render_addition($alter, $element, $is_change) {
++  // Change the way panelizer_defaults exports are rendered.
++  $code = array();
++  $component_start = "\$data['$element']";
++  if (isset($alter['position'])) {
++    unset($alter['keys']['pid']);
++    $code_line = features_override_export_keys($alter['keys']);
++    $code[] = "  " . $component_start . $code_line . "['{$alter['value']}'] = '{$alter['pid']}';"; //$alter['value']?
++  }
++  else {
++    $code_line = features_override_export_keys($alter['keys']);
++    $value_export = features_override_var_export($alter['value'], '  ');
++    if ($is_change) {
++      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '  ') . ' */' : '';
++    }
++    else {
++      $original_export = '';
++    }
++    $code[] = "  " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;
++  }
++  return $code;
+ }
+ 
+ /**

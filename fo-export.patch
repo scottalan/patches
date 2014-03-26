@@ -1,0 +1,124 @@
+diff --git a/features_override.export.inc b/features_override.export.inc
+index c7dc404..3d16ca1 100644
+--- a/features_override.export.inc
++++ b/features_override.export.inc
+@@ -16,7 +16,7 @@
+  *   An array of component, element, and keys string
+  * @see features_override_make_key()
+  */
+-function features_override_parse_identifier($identifier) {
++function features_override_parse_identifier($identifier, $base = FALSE) {
+   $first_period = strpos($identifier, '.');
+   $component = substr($identifier, 0, $first_period);
+   if ($second_period = strpos($identifier, '.', $first_period + 1)) {
+@@ -190,7 +190,7 @@ function features_override_module_component_overrides($module, $component, $rese
+       );
+       if (isset($default_copy[$name])) {
+         drupal_alter('features_override_component_overrides', $default_copy[$name], $normal_copy[$name], $context);
+-        _features_override_set_additions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['additions'], $ignore_keys);
++        _features_override_set_additions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['additions'], $context, $ignore_keys);
+         _features_override_set_deletions($default_copy[$name], $normal_copy[$name], $component_overrides[$name]['deletions'], $ignore_keys);
+       }
+       if (!array_filter($component_overrides[$name])) {
+@@ -250,7 +250,7 @@ function _features_override_sanitize(&$array) {
+  * @param $keys
+  *   The keys for this level.
+  */
+-function _features_override_set_additions(&$default, &$normal, &$additions, $ignore_keys = array(), $level = 0, $keys = array()) {
++function _features_override_set_additions(&$default, &$normal, &$additions, $context, $ignore_keys = array(), $level = 0, $keys = array()) {
+   if (is_object($normal) || is_array($normal)) {
+     foreach ($normal as $key => $value) {
+       if (isset($ignore_keys[$key]) && ($level == $ignore_keys[$key])) {
+@@ -267,21 +267,40 @@ function _features_override_set_additions(&$default, &$normal, &$additions, $ign
+           );
+         }
+         elseif (property_exists($default, $key) && ($default->$key !== $value)) {
+-          _features_override_set_additions($default->$key, $value, $additions, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'object', 'key' => $key))));
++          _features_override_set_additions($default->$key, $value, $additions, $context, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'object', 'key' => $key))));
+         }
+       }
+       elseif (is_array($normal)) {
+         if (!is_array($default) || !array_key_exists($key, $default) ||
+            (is_scalar($value) && (features_var_export($default[$key]) !== features_var_export($value)))) {
+           $_keys = array_merge($keys, array(array('type' => 'array', 'key' => $key)));
+-          $additions[features_override_make_key($_keys)] = array(
+-            'keys' => $_keys,
+-            'value' => $value,
+-            'original' => (is_scalar($value) && isset($default[$key])) ? $default[$key] : '',
+-          );
++          //scott
++          // Special care for panelizer_defaults.
++          if ($level == 2 && $_keys[0]['key'] == 'display' && $_keys[1]['key'] == 'panels' && isset($_keys[2])) {
++            if ($_keys[2]['key'] == $key) {
++              foreach ($value as $position => $pid) {
++                $_keys['pid'] = array('type' => 'pid', 'key' => $pid);
++                $additions[features_override_make_key($_keys)] = array(
++                  'keys' => $_keys,
++                  'value' => (string) $position,
++                  'pid' => $pid,
++                  'position' => $position,
++                  'original' => (is_scalar($position) && isset($default->$key)) ? $default->$key : '',
++                );
++              }
++            }
++          }
++          //end
++          else {
++            $additions[features_override_make_key($_keys)] = array(
++              'keys' => $_keys,
++              'value' => $value,
++              'original' => (is_scalar($value) && isset($default[$key])) ? $default[$key] : '',
++            );
++          }
+         }
+         elseif (array_key_exists($key, $default) && (!is_null($value) && ($default[$key] !== $value))) {
+-          _features_override_set_additions($default[$key], $value, $additions, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'array', 'key' => $key))));
++          _features_override_set_additions($default[$key], $value, $additions, $context, $ignore_keys, $level+1, array_merge($keys, array(array('type' => 'array', 'key' => $key))));
+         }
+       }
+     }
+@@ -454,7 +473,7 @@ function features_override_var_export($var, $prefix = '') {
+         $output .= ')';
+       }
+     }
+-    // Objects do not export cleanily.
++    // Objects do not export cleanly.
+     else {
+       if (method_exists($var, 'export')) {
+         $output = $var->export();
+@@ -472,6 +491,9 @@ function features_override_var_export($var, $prefix = '') {
+       }
+     }
+   }
++  elseif ($var === '0') {
++    $output = var_export($var, TRUE);
++  }
+   else {
+     module_load_include('inc', 'features', 'features.export');
+     $output = features_var_export($var);
+@@ -490,20 +512,20 @@ function features_override_var_export($var, $prefix = '') {
+ function features_override_features_export_render_addition($alter, $element, $component, $is_change = TRUE) {
+   module_load_include('inc', 'features_override', 'features_override.hooks');
+   if (features_hook($component, 'features_override_export_render_addition')) {
+-    return features_invoke($component, 'features_override_export_render_addition', $alter, $element);
++    return features_invoke($component, 'features_override_export_render_addition', $alter, $element, $is_change);
+   }
+   else {
+-    $code = array();
++    $code = array();//data
+     $component_start = "\$data['$element']";
+     $code_line = features_override_export_keys($alter['keys']);
+-    $value_export = features_override_var_export($alter['value'], '    ');
++    $value_export = features_override_var_export($alter['value'], '  ');
+     if ($is_change) {
+-      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '    ') . ' */' : '';
++      $original_export = (isset($alter['original'])) ? ' /* WAS: ' . features_override_var_export($alter['original'], '  ') . ' */' : '';
+     }
+     else {
+       $original_export = '';
+     }
+-    $code[] = "    " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;
++    $code[] = "  " . $component_start . $code_line . ' = ' . $value_export . ';' . $original_export;
+     return $code;
+   }
+ }
